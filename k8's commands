@@ -23,5 +23,11 @@ kubectl get replicasets/rs
 kubectl scale rs jenkins-replica-set  --replica=2
 kubectl exec -it tomcat -c tomcat -- /bin/bash
 kubectl delete pod podname
+kubectl taint node ip-172-31-14-17 size=big:NoExecute-
+kubectl taint node ip-172-31-14-17 size=big:PreferNoSchedule
+kubectl get node --show-labels
+kubectl taint node ip-172-31-14-17 size=big:PreferNoSchedule-
+kubectl taint node ip-172-31-24-33 colour=orange:NoSchedule-
+kubectl delete daemonset nginx-daemonset
 
 
