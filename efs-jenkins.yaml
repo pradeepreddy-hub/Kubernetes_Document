@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jenkins-efs
+spec:
+  securityContext:
+    fsGroup: 1000
+  containers:
+  - name: jenkins
+    image: jenkins/jenkins:lts
+    volumeMounts:
+    - mountPath: /var/jenkins_home
+      name: efs-vol
+  volumes:
+  - name: efs-vol
+    persistentVolumeClaim:
+      claimName: efs-test-pvc

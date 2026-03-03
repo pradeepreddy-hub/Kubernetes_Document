@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jenkins-app
+spec:
+  securityContext:
+    fsGroup: 1000
+  containers:
+  - name: jenkins
+    image: jenkins/jenkins:lts
+    volumeMounts:
+    - mountPath: "/var/jenkins_home"
+      name: storage
+  volumes:
+  - name: storage
+    persistentVolumeClaim:
+      claimName: my-pvc
