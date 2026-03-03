@@ -152,14 +152,4 @@ Status should now be:
 * Volume ownership must match container user
 * Manual PVs often require one-time permission fix
 
----
-
-## Best Practice (Production)
-
-* Use dynamic provisioning (StorageClass)
-* Use proper `securityContext`
-* Prefer Deployments or StatefulSets instead of standalone Pods
-
----
-
 End of document.
