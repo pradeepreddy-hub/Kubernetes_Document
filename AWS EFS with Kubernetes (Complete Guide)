@@ -1,0 +1,316 @@
+# AWS EFS with Kubernetes (Complete Guide)
+
+---
+
+# 1️⃣ What is EFS?
+
+Amazon EFS (Elastic File System) is a fully managed, scalable **network file system (NFS)** that can be mounted by multiple EC2 instances at the same time.
+
+In Kubernetes, EFS is used for:
+
+* Shared storage across multiple nodes
+* Applications requiring ReadWriteMany (RWX)
+* Jenkins HA
+* WordPress
+* Shared uploads/logs
+
+---
+
+# 2️⃣ EFS vs EBS
+
+| Feature           | EBS                 | EFS                 |
+| ----------------- | ------------------- | ------------------- |
+| Storage Type      | Block               | Network File System |
+| Access Mode       | ReadWriteOnce (RWO) | ReadWriteMany (RWX) |
+| Multi-node access | ❌ No                | ✅ Yes               |
+| Best for          | Single pod apps     | Shared applications |
+| AZ limitation     | Single AZ           | Multi-AZ            |
+
+---
+
+# 3️⃣ Architecture (How EFS Works in Kubernetes)
+
+When using dynamic provisioning:
+
+```
+Pod
+  ↓
+PVC
+  ↓
+StorageClass (efs.csi.aws.com)
+  ↓
+EFS Access Point (auto-created)
+  ↓
+EFS File System (existing in AWS)
+```
+
+Important:
+
+* Kubernetes DOES NOT create the EFS file system.
+* It creates Access Points inside an existing EFS.
+
+---
+
+# 4️⃣ Prerequisites
+
+Before using EFS in Kubernetes:
+
+### ✅ 1. Create EFS in AWS
+
+* Go to AWS Console → EFS
+* Create file system
+* Create mount targets in your VPC subnets
+* Allow port 2049 (NFS) in security group
+* Note the FileSystem ID: `fs-xxxxxxxx`
+
+---
+
+### ✅ 2. Install EFS CSI Driver
+
+```bash
+helm repo add aws-efs-csi-driver https://kubernetes-sigs.github.io/aws-efs-csi-driver/
+helm repo update
+
+helm install aws-efs-csi-driver aws-efs-csi-driver/aws-efs-csi-driver \
+  -n kube-system \
+  --create-namespace
+```
+
+Verify:
+
+```bash
+kubectl get pods -n kube-system | grep efs
+```
+
+---
+
+### ✅ 3. IAM Permissions (Very Important)
+
+You must attach this AWS policy:
+
+```
+AmazonEFSCSIDriverPolicy
+```
+
+Either:
+
+* Attach to worker node IAM role (simpler)
+* Or use IRSA (recommended for production)
+
+Without this → PVC stays Pending with Access Denied.
+
+---
+
+# 5️⃣ Create StorageClass
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-sc
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: fs-xxxxxxxx
+  directoryPerms: "700"
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+```
+
+Apply:
+
+```bash
+kubectl apply -f efs-sc.yaml
+```
+
+---
+
+# 6️⃣ Create PVC (RWX)
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: efs-test-pvc
+spec:
+  storageClassName: efs-sc
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+Apply:
+
+```bash
+kubectl apply -f efs-pvc.yaml
+```
+
+Check:
+
+```bash
+kubectl get pvc
+```
+
+Status should be `Bound`.
+
+---
+
+# 7️⃣ Mount in a Pod
+
+Example:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: efs-test-pod
+spec:
+  containers:
+  - name: app
+    image: nginx
+    volumeMounts:
+    - name: efs-vol
+      mountPath: /usr/share/nginx/html
+  volumes:
+  - name: efs-vol
+    persistentVolumeClaim:
+      claimName: efs-test-pvc
+```
+
+---
+
+# 8️⃣ Using EFS for Jenkins
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: jenkins-efs
+spec:
+  securityContext:
+    fsGroup: 1000
+  containers:
+  - name: jenkins
+    image: jenkins/jenkins:lts
+    volumeMounts:
+    - mountPath: /var/jenkins_home
+      name: efs-vol
+  volumes:
+  - name: efs-vol
+    persistentVolumeClaim:
+      claimName: efs-test-pvc
+```
+
+---
+
+# 9️⃣ What Happens When You Delete PVC?
+
+Depends on StorageClass:
+
+### If `reclaimPolicy: Delete`
+
+* PVC deleted
+* PV deleted
+* EFS Access Point deleted
+* EFS File System remains
+
+### If `reclaimPolicy: Retain`
+
+* PVC deleted
+* PV remains
+* Access Point remains
+* EFS remains
+
+Important:
+
+EFS File System is NEVER deleted automatically.
+
+---
+
+# 🔟 Common Errors & Fixes
+
+### ❌ PVC Pending
+
+Cause:
+
+* Missing IAM permissions
+* Wrong fileSystemId
+* EFS CSI driver not running
+
+Fix:
+
+* Attach AmazonEFSCSIDriverPolicy
+* Check `kubectl describe pvc`
+
+---
+
+### ❌ Access Denied
+
+Cause:
+
+* No IAM role attached
+
+Fix:
+
+* Attach correct IAM policy
+* Restart CSI driver pods
+
+---
+
+### ❌ Pod Pending
+
+Cause:
+
+* PVC not Bound
+
+Fix:
+
+* Fix PVC provisioning issue first
+
+---
+
+# 1️⃣1️⃣ Best Practices
+
+* Use IRSA instead of node-wide IAM roles
+* Use ReadWriteMany only when needed
+* Clean unused Access Points
+* Monitor EFS costs
+* Use Deployment/StatefulSet for production
+
+---
+
+# 1️⃣2️⃣ When to Use EFS
+
+Use EFS when:
+
+* Multiple pods need same storage
+* Application must survive pod rescheduling
+* You need shared file storage across nodes
+
+Do NOT use EFS when:
+
+* You need high IOPS block storage (use EBS instead)
+* Single pod storage is enough
+
+---
+
+# Final Summary
+
+EFS in Kubernetes provides:
+
+* Shared, scalable file storage
+* Multi-node access (RWX)
+* Automatic Access Point provisioning
+* High availability across AZs
+
+But requires:
+
+* Correct IAM permissions
+* Proper CSI driver installation
+* Correct StorageClass configuration
+
+---
+
+End of Document
