@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        runAsUser: 0
+      containers:
+      - name: grafana
+        image: pradeepreddyhub/grafana:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: GF_SERVER_ROOT_URL
+          value: "http://a2936f4814fef4c6a982849ceddfd178-af315045c9b01f58.elb.ap-south-1.amazonaws.com/grafana"
+        - name: GF_SERVER_SERVE_FROM_SUB_PATH
+          value: "true"
+        - name: GF_SERVER_DOMAIN
+          value: "a2936f4814fef4c6a982849ceddfd178-af315045c9b01f58.elb.ap-south-1.amazonaws.com"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-cluster
+spec:
+  selector:
+    app: grafana
+  ports:
+  - port: 3000
+    targetPort: 3000
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: grafana-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: grafana
+  namespace: default
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/grafana-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /grafana
+    route:
+    - destination:
+        host: grafana-cluster
+        port:
+          number: 3000
