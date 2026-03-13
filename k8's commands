@@ -108,6 +108,12 @@ kubectl get svc jenkins-svc -n default -o yaml
 
 # Ingress gateway logs
 kubectl logs -n istio-system -l app=istio-ingressgateway --tail=50
+_______________________________________________________________________________
+eksctl create cluster -f cluster.yaml
+kubectl get pods -n kube-system | grep cluster-autoscaler
+kubectl -n kube-system logs -f deployment/cluster-autoscaler
+kubectl get events -n kube-system | grep cluster-autoscaler
+kubectl get nodes -w
 
 
 
