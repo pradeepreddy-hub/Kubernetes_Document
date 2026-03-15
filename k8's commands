@@ -122,7 +122,7 @@ helm delete jenkins-helm-1773557196
 helm install jenkins-helm ./jenkins-helm --create-namespace -n my-jenkins --dry-run
 helm install jenkins-helm ./jenkins-helm --create-namespace -n my-jenkins
 helm upgrade --install jenkins-helm ./jenkins-helm -n my-jenkins
-
+helm uninstall jenkins-helm -n my-jenkins
 
 
 
